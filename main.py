@@ -77,6 +77,10 @@ def normalize_ioc(ioc):
         ioc = ioc.lower().strip()
         # Remove common prefixes and suffixes (e.g., http://, www., .com)
         ioc = re.sub(r"^(http://|https://|www\.)", "", ioc)
+        # Only these four suffixes are stripped, and only one prefix form.
+        # A .co.uk domain keeps its suffix and an address written with both
+        # www and a scheme keeps one of them, so near duplicates of those
+        # shapes score lower than the same pair under a listed suffix.
         ioc = re.sub(r"(\.com|\.net|\.org|\.io)$", "", ioc)
         return ioc
     except Exception as e:
@@ -106,12 +110,19 @@ def calculate_similarity(iocs, similarity_metric="jaccard", threshold=0.8):
                 ioc2 = normalized_iocs[j]
 
                 if similarity_metric == "jaccard":
+                    # Jaccard here runs on the set of characters in each string. Word
+                    # order and repetition vanish, so two IOCs built from the same
+                    # letters in a different order score a perfect 1.0, and short
+                    # strings score high on very little shared evidence.
                     set1 = set(ioc1)
                     set2 = set(ioc2)
                     similarity_score = jaccard_similarity(set1, set2)
                 elif similarity_metric == "levenshtein":
                     distance = levenshtein_distance(ioc1, ioc2)
                     max_length = max(len(ioc1), len(ioc2))
+                    # Two IOCs that both normalize to empty score 1.0 here, a perfect
+                    # match. The Jaccard path scores that same pair 0.0, so the empty
+                    # case flips verdict depending on the metric chosen.
                     similarity_score = 1 - (distance / max_length) if max_length > 0 else 1.0 # Ensure no division by zero
 
                 else:
@@ -131,6 +142,10 @@ def calculate_similarity(iocs, similarity_metric="jaccard", threshold=0.8):
         return df
 
     except ValueError as ve:
+        # An invalid metric and a run with no pairs over threshold both come
+        # back as the same empty frame, and main prints the no matches
+        # message for both. A configuration error is reported as a clean
+        # result.
         logging.error(f"ValueError in calculate_similarity: {ve}")
         return pd.DataFrame() # Return empty DataFrame on error
     except Exception as e:
