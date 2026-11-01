@@ -110,12 +110,11 @@ def calculate_similarity(iocs, similarity_metric="jaccard", threshold=0.8):
                 ioc2 = normalized_iocs[j]
 
                 if similarity_metric == "jaccard":
-                    # Jaccard here runs on the set of characters in each string. Word
-                    # order and repetition vanish, so two IOCs built from the same
-                    # letters in a different order score a perfect 1.0, and short
-                    # strings score high on very little shared evidence.
-                    set1 = set(ioc1)
-                    set2 = set(ioc2)
+                    # Jaccard runs on character 3-gram sets of each string, so
+                    # order and local structure count and reversed strings do
+                    # not score a perfect match unless they are identical.
+                    set1 = {ioc1[i:i + 3] for i in range(len(ioc1) - 2)} if len(ioc1) >= 3 else ({ioc1} if ioc1 else set())
+                    set2 = {ioc2[i:i + 3] for i in range(len(ioc2) - 2)} if len(ioc2) >= 3 else ({ioc2} if ioc2 else set())
                     similarity_score = jaccard_similarity(set1, set2)
                 elif similarity_metric == "levenshtein":
                     distance = levenshtein_distance(ioc1, ioc2)
@@ -138,7 +137,10 @@ def calculate_similarity(iocs, similarity_metric="jaccard", threshold=0.8):
                         "Metric": similarity_metric
                     })
 
-        df = pd.DataFrame(similarity_data)
+        if similarity_data:
+            df = pd.DataFrame(similarity_data)
+        else:
+            df = pd.DataFrame(columns=["IOC1", "IOC2", "Normalized_IOC1", "Normalized_IOC2", "Similarity", "Metric"])
         return df
 
     except ValueError as ve:
@@ -189,6 +191,13 @@ def main():
 
         if similarity_df.empty:
             print("No similar IOCs found above the specified threshold.")
+            if args.output:
+                try:
+                    similarity_df.to_csv(args.output, index=False)
+                    print(f"No pairs passed the threshold. A header-only CSV was written to: {args.output}")
+                except Exception as e:
+                    logging.error(f"Error saving results to file: {e}")
+                    sys.exit(1)
         else:
             print(tabulate(similarity_df, headers="keys", tablefmt="grid"))
 
